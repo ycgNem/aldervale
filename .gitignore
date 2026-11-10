@@ -1,0 +1,4 @@
+node_modules
+dist
+shots
+tools/blender/__pycache__
