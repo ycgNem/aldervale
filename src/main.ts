@@ -1,20 +1,22 @@
-import { Color, PerspectiveCamera, Scene } from 'three';
+import { Color, PerspectiveCamera, Scene, Vector3 } from 'three';
+import { AudioEngine } from './audio/audio';
 import { Assets } from './core/assets';
 import { MaterialLib } from './core/materials';
 import { installGlobalShaderPatches, makeNoiseTexture, shared } from './core/shared';
 import { Particles } from './fx/particles';
-import { BUILDING_IDS, ITEM_IDS, ITEMS } from './game/economy';
 import { FirstPerson } from './game/fp';
 import { Game } from './game/game';
-import { TOOL_IDS, ViewModel } from './game/viewmodel';
+import { BUILDING_IDS, CROPS, ITEMS, ITEM_IDS, TOOL_ORDER } from './game/state';
+import { ViewModel } from './game/viewmodel';
 import { Pipeline } from './render/pipeline';
+import { Rain } from './render/rain';
 import { Environment } from './render/sky';
 import { renderIcons } from './ui/icons';
 import { UI } from './ui/ui';
 import { Estate } from './world/estate';
-import { Field } from './world/field';
+import { Field, type CropType } from './world/field';
 import { createGrass, makeMaskSampler } from './world/grass';
-import { SPAWN, groundMask, type GroundMask } from './world/layout';
+import { SPAWN } from './world/layout';
 import { Life } from './world/life';
 import { buildWorld } from './world/props';
 import { createTerrain } from './world/terrain';
@@ -30,12 +32,13 @@ const num = (k: string, d: number): number => {
 async function boot(): Promise<void> {
   const canvas = document.getElementById('scene') as HTMLCanvasElement;
   const ui = new UI(document.getElementById('ui') as HTMLElement);
+  const audio = new AudioEngine();
 
   installGlobalShaderPatches();
   shared.uNoise.value = makeNoiseTexture();
 
   const scene = new Scene();
-  const camera = new PerspectiveCamera(num('fov', 70), window.innerWidth / window.innerHeight, 0.05, 2400);
+  const camera = new PerspectiveCamera(num('fov', 72), window.innerWidth / window.innerHeight, 0.05, 2400);
   scene.add(camera);
   const pipeline = new Pipeline(canvas, scene, camera, {
     tone: params.get('tone') === 'aces' ? 'aces' : 'agx',
@@ -51,15 +54,17 @@ async function boot(): Promise<void> {
   await assets.load((done, total) => ui.setLoading((done / total) * 0.85));
   if (assets.missing.length) console.warn('[assets] missing:', assets.missing.join(', '));
   const lib = new MaterialLib(assets);
+  /** New crops only appear once their models exist. */
+  const avail = (c: CropType): boolean => assets.has(`${c}_3`);
 
   // icons: every good, tool and building rendered from its real model
   const iconModels: Record<string, string> = {};
-  const cropFallback: Record<string, string> = { wheat: 'wheat_3', tomato: 'tomato_3', pumpkin: 'pumpkin_3' };
-  for (const id of ITEM_IDS) iconModels[id] = assets.has(ITEMS[id].model) ? ITEMS[id].model : (cropFallback[id] ?? ITEMS[id].model);
-  iconModels.tool_hoe = 'tool_hoe';
-  iconModels.tool_seeds = 'tool_seed_bag';
-  iconModels.tool_water = 'tool_watering_can';
-  iconModels.tool_harvest = 'tool_basket';
+  for (const id of ITEM_IDS) {
+    const d = ITEMS[id];
+    iconModels[id] = assets.has(d.model) ? d.model : d.fallback && assets.has(d.fallback) ? d.fallback : d.model;
+  }
+  const toolAsset: Record<string, string> = { hoe: 'tool_hoe', seeds: 'tool_seed_bag', water: 'tool_watering_can', harvest: 'tool_basket', axe: 'tool_axe', pick: 'tool_pick' };
+  for (const t of TOOL_ORDER) iconModels[`tool_${t}`] = toolAsset[t]!;
   for (const b of BUILDING_IDS) iconModels[`bld_${b}`] = b;
   ui.setIcons(renderIcons(assets, lib, iconModels));
   ui.setLoading(0.9);
@@ -81,32 +86,50 @@ async function boot(): Promise<void> {
 
   const particles = new Particles(scene);
   const life = new Life(scene, assets, lib, world, particles);
-  const estate = new Estate(scene, assets, lib, particles, world.colliders);
+  const estate = new Estate(scene, assets, lib, particles, world.colliders, world.appleTrees);
+  const rain = new Rain(scene);
 
   const fp = new FirstPerson(camera);
   fp.teleport(num('x', SPAWN.x), num('z', SPAWN.z), num('yaw', SPAWN.yaw), num('pitch', -0.08));
-  const gm: GroundMask = { dirt: 0, path: 0, shore: 0 };
-  fp.onStep = (x, y, z) => {
-    groundMask(x, z, gm);
-    const dusty = Math.max(gm.dirt, gm.path);
-    if (dusty < 0.35) return;
-    for (let i = 0; i < 2; i++) {
-      particles.emit({ x: x + (Math.random() - 0.5) * 0.3, y: y + 0.04, z: z + (Math.random() - 0.5) * 0.3, vx: (Math.random() - 0.5) * 0.4, vy: 0.2 + Math.random() * 0.25, vz: (Math.random() - 0.5) * 0.4, life: 0.7 + Math.random() * 0.4, size: 0.1, sizeEnd: 0.38, r: 0.66, g: 0.52, b: 0.38, alpha: 0.16 * dusty, sprite: 0, drag: 2, wind: 0.4, rot: Math.random() * 6 });
-    }
-  };
   const vm = new ViewModel(camera, assets, lib);
 
   // ---- time of day
-  if (params.has('time')) env.setHour(num('time', 17));
-  else env.setHour(9.5);
+  env.setHour(params.has('time') ? num('time', 9.5) : 9.5);
   if (params.has('freeze')) env.paused = true;
   if (params.has('speed')) env.speed *= num('speed', 1);
 
   const fresh = params.has('fresh');
   if (fresh) Game.clearSave();
   const hadSave = Game.hasSave();
-  const game = new Game(field, fp, vm, estate, particles, ui, camera, env, fresh);
-  if (params.has('time')) env.setHour(num('time', 17));
+  const game = new Game(field, fp, vm, estate, particles, ui, camera, env, audio, avail, fresh);
+  if (params.has('time')) env.setHour(num('time', 9.5));
+
+  // settings
+  const applySettings = (): void => {
+    const st = game.settings;
+    audio.volumes.master = st.master;
+    audio.volumes.music = st.music;
+    audio.volumes.sfx = st.sfx;
+    audio.applyVolumes();
+    fp.sensitivity = 0.0022 * st.sensitivity;
+    fp.invertY = st.invertY;
+    if (!params.has('fov')) {
+      camera.fov = st.fov;
+      camera.updateProjectionMatrix();
+    }
+  };
+  applySettings();
+
+  // footsteps + landing
+  fp.onStep = (x, y, z) => {
+    const surf = game.surface(x, z);
+    audio.play(surf === 'dirt' ? 'step_dirt' : surf === 'wood' ? 'step_wood' : 'step_grass', undefined, 0.8 + Math.random() * 0.3);
+    if (surf !== 'dirt') return;
+    for (let i = 0; i < 2; i++) {
+      particles.emit({ x: x + (Math.random() - 0.5) * 0.3, y: y + 0.04, z: z + (Math.random() - 0.5) * 0.3, vx: (Math.random() - 0.5) * 0.4, vy: 0.2 + Math.random() * 0.25, vz: (Math.random() - 0.5) * 0.4, life: 0.7 + Math.random() * 0.4, size: 0.1, sizeEnd: 0.38, r: 0.66, g: 0.52, b: 0.38, alpha: 0.14, sprite: 0, drag: 2, wind: 0.4, rot: Math.random() * 6 });
+    }
+  };
+  fp.onLand = () => audio.play('land');
 
   // ---- input
   const keys = new Set<string>();
@@ -118,41 +141,67 @@ async function boot(): Promise<void> {
       const r = canvas.requestPointerLock() as unknown as Promise<void> | undefined;
       if (r && typeof r.catch === 'function') r.catch(() => undefined);
     } catch {
-      /* not allowed right now */
+      /* not allowed right now: the click-to-look hint covers it */
     }
   };
   const resume = (): void => {
+    audio.start();
+    audio.suspend(false);
     ui.hideTitle();
     paused = false;
     vm.setForcedLow(false);
     lock();
+    game.intro();
   };
   const reset = (): void => {
     Game.clearSave();
     location.search = '?fresh';
   };
+  const openSettings = (): void => {
+    ui.hideTitle();
+    ui.openSettings(
+      { ...game.settings },
+      (st) => {
+        Object.assign(game.settings, st);
+        game.saveSettings();
+        applySettings();
+      },
+      () => showMenu(titleMode),
+    );
+  };
+  let titleMode: 'new' | 'continue' | 'pause' = 'new';
   const showMenu = (mode: 'new' | 'continue' | 'pause'): void => {
+    titleMode = mode;
     paused = true;
     vm.setForcedLow(true);
-    ui.showTitle(mode, resume, mode === 'new' ? null : reset);
+    ui.showTitle(mode, resume, mode === 'new' ? null : reset, openSettings);
   };
   ui.onClose = () => {
     vm.setForcedLow(false);
-    if (!ui.titleOpen) lock();
+    if (!ui.titleOpen && !paused) lock();
   };
-  const openedPanel = (): void => {
+  ui.onClick = () => audio.play('click', undefined, 0.6);
+  /** When we let go of the mouse on purpose (menus), the unlock isn't a pause. */
+  let releasedAt = -1e9;
+  game.onPanel = () => {
     vm.setForcedLow(true);
+    releasedAt = performance.now();
     if (locked()) document.exitPointerLock();
+  };
+  game.onEnding = () => {
+    vm.setForcedLow(false);
+    lock();
   };
 
   document.addEventListener('pointerlockchange', () => {
-    if (!locked() && !ui.panelOpen && !ui.titleOpen && !paused) {
+    if (!locked() && !ui.panelOpen && !ui.titleOpen && !paused && performance.now() - releasedAt > 700) {
       game.save();
       showMenu('pause');
     }
   });
   canvas.addEventListener('mousedown', (e) => {
     if (paused || ui.panelOpen) return;
+    audio.start();
     if (!locked()) {
       lock();
       return;
@@ -178,8 +227,9 @@ async function boot(): Promise<void> {
     { passive: true },
   );
   window.addEventListener('keydown', (e) => {
-    if ((e.code === 'Escape' || e.code === 'KeyE' || e.code === 'Tab') && ui.panelOpen) {
+    if ((e.code === 'Escape' || e.code === 'KeyE' || e.code === 'Tab' || e.code === 'KeyJ') && ui.panelOpen) {
       e.preventDefault();
+      if (ui.panelName === 'ending') return;
       ui.closePanel();
       return;
     }
@@ -190,25 +240,29 @@ async function boot(): Promise<void> {
       showStats = !showStats;
     }
     if (paused || ui.panelOpen) return;
-    const n = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(e.code);
-    if (n >= 0) game.selectTool(TOOL_IDS[n]!);
+    const n = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6'].indexOf(e.code);
+    if (n >= 0) game.selectTool(TOOL_ORDER[n]!);
     else if (e.code === 'KeyQ') game.cycleSeed();
-    else if (e.code === 'KeyE' || e.code === 'KeyF') {
-      game.interact();
-      if (ui.panelOpen) openedPanel();
-    } else if (e.code === 'KeyT') env.paused = !env.paused;
-    else if (e.code === 'BracketRight') env.setHour(env.hour + 0.5);
-    else if (e.code === 'BracketLeft') env.setHour(env.hour - 0.5);
+    else if (e.code === 'KeyE' || e.code === 'KeyF') game.interact();
+    else if (e.code === 'KeyJ' || e.code === 'Tab') {
+      e.preventDefault();
+      game.openJournal();
+    } else if (e.code === 'Space') {
+      e.preventDefault();
+      if (fp.jump()) audio.play('jump');
+    } else if (e.code === 'KeyM') {
+      audio.musicOn = !audio.musicOn;
+      audio.applyVolumes();
+      ui.toast(audio.musicOn ? 'Music on' : 'Music off');
+    } else if (e.code === 'KeyT' && params.has('debug')) env.paused = !env.paused;
+    else if (e.code === 'BracketRight' && params.has('debug')) env.setHour(env.hour + 0.5);
+    else if (e.code === 'BracketLeft' && params.has('debug')) env.setHour(env.hour - 0.5);
     else if (e.code === 'KeyH') ui.setHudVisible(!ui.hudVisible);
-    else if (e.code === 'Tab') e.preventDefault();
   });
   window.addEventListener('keyup', (e) => keys.delete(e.code));
   window.addEventListener('blur', () => keys.clear());
   window.addEventListener('beforeunload', () => game.save());
-  // right-click interact opens panels too
-  canvas.addEventListener('mouseup', (e) => {
-    if (e.button === 2 && ui.panelOpen) openedPanel();
-  });
+  document.addEventListener('visibilitychange', () => audio.suspend(document.hidden));
 
   const resize = (): void => {
     pipeline.resize(window.innerWidth, window.innerHeight);
@@ -219,6 +273,7 @@ async function boot(): Promise<void> {
 
   const tint = new Color();
   const windDir = shared.uWind.value;
+  const fwd = new Vector3();
   let last = performance.now();
   let fpsT = 0;
   let fpsN = 0;
@@ -233,17 +288,24 @@ async function boot(): Promise<void> {
     const t = shared.uTime.value;
     windDir.z = 0.9 + 0.22 * Math.sin(t * 0.21) + 0.1 * Math.sin(t * 0.53 + 1.7);
 
-    const live = (!paused && !ui.panelOpen && locked()) || forceActive;
+    const live = (!paused && !ui.panelOpen && locked()) || (forceActive && !ui.panelOpen);
     game.active = live;
+    ui.setLookHint(!paused && !ui.panelOpen && !locked() && !forceActive && !ui.titleOpen);
     const k = (c: string): number => (live && keys.has(c) ? 1 : 0);
-    fp.update(
-      dt,
-      { fwd: k('KeyW') + k('ArrowUp') - k('KeyS') - k('ArrowDown'), side: k('KeyD') + k('ArrowRight') - k('KeyA') - k('ArrowLeft'), run: k('ShiftLeft') + k('ShiftRight') > 0 },
-      world.colliders,
-      world.deckAt,
-      (x, z) => field.surfaceAt(x, z),
-    );
-    vm.update(dt, fp.speed, fp.phase, fp.look.x, fp.look.y, live && (keys.has('ShiftLeft') || keys.has('ShiftRight')) && fp.speed > 4);
+    const running = k('ShiftLeft') + k('ShiftRight') > 0;
+    fp.update(dt, { fwd: k('KeyW') + k('ArrowUp') - k('KeyS') - k('ArrowDown'), side: k('KeyD') + k('ArrowRight') - k('KeyA') - k('ArrowLeft'), run: running }, world.colliders, world.deckAt, (x, z) => field.surfaceAt(x, z));
+    // tuck the tool away when your nose is against something solid
+    fp.forward(fwd);
+    const px = fp.pos.x + fwd.x * 0.55;
+    const pz = fp.pos.z + fwd.z * 0.55;
+    vm.blocked = world.colliders.circles.some((c) => c.r > 0 && Math.hypot(c.x - px, c.z - pz) < c.r + 0.1) || world.colliders.segments.some((sg) => {
+      const ex = sg.bx - sg.ax;
+      const ez = sg.bz - sg.az;
+      const l2 = ex * ex + ez * ez;
+      const tt = l2 > 0 ? Math.max(0, Math.min(1, ((px - sg.ax) * ex + (pz - sg.az) * ez) / l2)) : 0;
+      return Math.hypot(px - (sg.ax + ex * tt), pz - (sg.az + ez * tt)) < sg.r + 0.12 && sg.r > 0.2;
+    });
+    vm.update(dt, fp.speed, fp.phase, fp.look.x, fp.look.y, live && running && fp.speed > 4);
     fp.endFrame();
 
     env.update(dt, camera);
@@ -255,13 +317,20 @@ async function boot(): Promise<void> {
     world.update(dt, fp.pos.x, fp.pos.z, glow);
     lib.setWindowGlow(glow * 2.6);
     field.update(dt);
-    estate.update(dt, game.econ, fp.pos, glow, env.daylight);
+    estate.update(dt, game.s, fp.pos, glow);
     game.update(dt);
+    rain.update(dt, camera, env.rain, env.daylight * 0.7 + 0.3, windDir);
 
     const up = Math.max(env.lightDir.y, 0);
     particles.light.copy(env.p.hor).multiplyScalar(0.55).add(tint.copy(env.p.sun).multiplyScalar(env.sun.intensity * (0.12 + up * 0.2)));
-    life.update(dt, fp.pos, env.daylight, env.night);
+    life.update(dt, fp.pos, env.daylight * (1 - env.rain * 0.8), env.night);
     particles.update(dt);
+
+    // sound follows the camera
+    camera.getWorldDirection(fwd);
+    audio.setListener(camera.position, fwd);
+    const amb = game.ambience();
+    audio.update(dt, { daylight: env.daylight, night: env.night, rain: env.rain, water: amb.water, mill: amb.mill, fire: amb.fire, hens: amb.hens, muffled: paused });
   };
 
   const frame = (now: number): void => {
@@ -293,7 +362,6 @@ async function boot(): Promise<void> {
   step(1 / 60);
   pipeline.render(1 / 60, env);
   ui.setLoading(1);
-  // reveal on the first frame; a timer covers tabs that open in the background
   let revealed = false;
   const reveal = (): void => {
     if (revealed) return;
@@ -328,8 +396,10 @@ async function boot(): Promise<void> {
     grass,
     world,
     life,
+    audio,
+    rain,
     step,
-    /** Let scripted tests act without pointer lock. */
+    crops: CROPS,
     play: (): void => {
       forceActive = true;
       paused = false;
@@ -337,16 +407,15 @@ async function boot(): Promise<void> {
       vm.setForcedLow(false);
     },
     menu: (mode: 'new' | 'continue' | 'pause' = 'new'): void => showMenu(mode),
-    /** Stand at (x, z) and look at (tx, ty, tz). */
+    key: (code: string, down = true): void => {
+      if (down) keys.add(code);
+      else keys.delete(code);
+    },
     look: (x: number, z: number, tx: number, ty: number, tz: number): void => {
       fp.teleport(x, z, 0);
       const ey = fp.pos.y + 1.62;
       fp.yaw = Math.atan2(-(tx - x), -(tz - z));
       fp.pitch = Math.atan2(ty - ey, Math.hypot(tx - x, tz - z));
-    },
-    key: (code: string, down = true): void => {
-      if (down) keys.add(code);
-      else keys.delete(code);
     },
     stats: () => ({ fps, frames, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }),
     run: (n = 30, dt = 1 / 60): void => {

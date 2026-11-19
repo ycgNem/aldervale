@@ -290,7 +290,7 @@ export class Particles {
   constructor(scene: Scene) {
     const atlas = makeAtlas();
     this.normal = new Layer(2600, atlas, false, this.light);
-    this.add = new Layer(900, atlas, true, this.light);
+    this.add = new Layer(1600, atlas, true, this.light);
     scene.add(this.normal.mesh, this.add.mesh);
   }
 

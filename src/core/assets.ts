@@ -155,6 +155,11 @@ export class Assets {
       this.loadGlb('models/royal.glb'),
       this.loadGlb('models/items.glb'),
       this.loadGlb('models/courier.glb'),
+      this.loadGlb('models/gather.glb'),
+      this.loadGlb('models/goods.glb'),
+      this.loadGlb('models/crops2.glb'),
+      this.loadGlb('models/folk.glb'),
+      this.loadGlb('models/market.glb'),
     );
     let done = 0;
     for (const j of jobs) {

@@ -21,11 +21,13 @@ import { WORLD_NORMAL_APPLY, WORLD_VARYINGS_ASSIGN, WORLD_VARYINGS_VERT, patch, 
 import { clamp, damp, easeOutElastic, mulberry32, noise2, smoothstep } from '../util/math';
 import { COLS, FIELD, PLOT, ROWS } from './layout';
 
-export type CropType = 'wheat' | 'tomato' | 'pumpkin';
-export const CROP_TYPES: CropType[] = ['wheat', 'tomato', 'pumpkin'];
-export const CROP_LABEL: Record<CropType, string> = { wheat: 'Wheat', tomato: 'Tomato', pumpkin: 'Pumpkin' };
+export type CropType = 'wheat' | 'tomato' | 'pumpkin' | 'carrot' | 'cabbage';
+export const CROP_TYPES: CropType[] = ['wheat', 'tomato', 'pumpkin', 'carrot', 'cabbage'];
+export const CROP_LABEL: Record<CropType, string> = { wheat: 'Wheat', tomato: 'Tomato', pumpkin: 'Pumpkin', carrot: 'Carrot', cabbage: 'Cabbage' };
 /** Seconds of watered time per growth stage. */
-export const STAGE_TIME: Record<CropType, number> = { wheat: 12, tomato: 17, pumpkin: 24 };
+export const STAGE_TIME: Record<CropType, number> = { wheat: 12, tomato: 17, pumpkin: 24, carrot: 10, cabbage: 20 };
+/** Growth speed on plots that have had compost spread. */
+export const FERTILE_BOOST = 1.6;
 export const DRY_TIME = 80;
 export const STAGES = 4;
 
@@ -36,6 +38,8 @@ export interface Plot {
   till: number;
   wet: number;
   crop: CropType | null;
+  /** Compost spread on this plot (faster growth, one extra crop). */
+  fert: boolean;
   stage: number;
   growth: number;
   /** Seconds since the last stage change (drives the pop). */
@@ -135,7 +139,7 @@ export class Field {
     const rng = mulberry32(77);
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
-        this.plots.push({ col: c, row: r, tilled: false, till: 0, wet: 0, crop: null, stage: 0, growth: 0, pop: 9, yaw: Math.floor(rng() * 4) * (Math.PI / 2) + (rng() - 0.5) * 0.3, leaving: 0, leavingCrop: null });
+        this.plots.push({ col: c, row: r, tilled: false, till: 0, wet: 0, crop: null, stage: 0, growth: 0, pop: 9, yaw: Math.floor(rng() * 4) * (Math.PI / 2) + (rng() - 0.5) * 0.3, leaving: 0, leavingCrop: null, fert: false });
       }
     }
 
@@ -288,6 +292,7 @@ export class Field {
     p.crop = null;
     p.stage = 0;
     p.growth = 0;
+    p.fert = false;
     return c;
   }
   isRipe(p: Plot): boolean {
@@ -296,7 +301,7 @@ export class Field {
   /** Watered seconds still needed before the crop is ripe. */
   timeToRipe(p: Plot): number {
     if (!p.crop) return 0;
-    return Math.max(0, (STAGES - 1 - p.stage - p.growth) * STAGE_TIME[p.crop]);
+    return Math.max(0, ((STAGES - 1 - p.stage - p.growth) * STAGE_TIME[p.crop]) / (p.fert ? FERTILE_BOOST : 1));
   }
 
   /** Smoothed tilled amount at a world position (soft bed edges, merged neighbours). */
@@ -411,7 +416,7 @@ export class Field {
       if (p.crop) {
         p.pop += dt;
         if (p.wet > 0.04 && p.stage < STAGES - 1) {
-          p.growth += dt / STAGE_TIME[p.crop];
+          p.growth += (dt / STAGE_TIME[p.crop]) * (p.fert ? FERTILE_BOOST : 1);
           if (p.growth >= 1) {
             p.growth = 0;
             p.stage++;

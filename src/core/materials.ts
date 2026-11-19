@@ -113,7 +113,7 @@ export class MaterialLib {
       case 'metal':
         return this.std({ set: 'metal', tile: 0.22, metal: 0.92, rough: 1, normalScale: 0.45, envIntensity: 1.1 });
       case 'metal_dark':
-        return this.std({ set: 'metal', tile: 0.18, useAlbedo: false, useRough: false, color: 0x5a554f, metal: 0.35, rough: 0.5, normalScale: 0.5, envIntensity: 0.55 });
+        return this.std({ set: 'metal', tile: 0.18, useAlbedo: false, useRough: false, color: 0x7a746d, metal: 0.25, rough: 0.58, normalScale: 0.5, envIntensity: 0.32 });
       case 'rope':
         return this.std({ set: 'straw', tile: 0.12, color: new Color(0.85, 0.74, 0.6) });
       case 'straw':

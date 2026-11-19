@@ -1282,3 +1282,494 @@ body {
     font-size: 40px;
   }
 }
+
+/* =============================================================== v2: the steward's year */
+
+/* chapter card (top left) reuses .favour; the objective log (right) reuses .orders */
+.chapter-kicker {
+  font: 800 10px/1 var(--sans);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.chapter-title {
+  font: 650 17px/1.1 var(--serif);
+  color: var(--royal-deep);
+  white-space: nowrap;
+}
+.mats {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.mats span {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font: 800 13px/1 var(--sans);
+}
+.mats img {
+  width: 22px;
+  height: 22px;
+}
+.obj {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  gap: 6px;
+  align-items: start;
+  padding: 6px 0;
+  border-top: 1px dashed rgba(140, 110, 60, 0.3);
+  font: 700 12.5px/1.3 var(--sans);
+  color: var(--ink);
+}
+.obj:first-of-type {
+  border-top: none;
+}
+.obj .tick {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 2px rgba(140, 110, 60, 0.45);
+  margin-top: 1px;
+  display: grid;
+  place-items: center;
+  font: 900 11px/1 var(--sans);
+  color: #fff;
+}
+.obj.done {
+  color: var(--ink-faint);
+}
+.obj.done .text {
+  text-decoration: line-through;
+  text-decoration-color: rgba(120, 100, 70, 0.5);
+}
+.obj.done .tick {
+  background: var(--leaf);
+  box-shadow: none;
+}
+.obj.current .tick {
+  box-shadow: inset 0 0 0 2px var(--gold), 0 0 8px rgba(246, 210, 122, 0.8);
+}
+.obj .n {
+  font: 800 11px/1.3 var(--sans);
+  color: var(--ink-soft);
+}
+.obj .hint {
+  grid-column: 2 / 4;
+  font: 600 11px/1.3 var(--sans);
+  color: var(--ink-soft);
+  margin-top: -2px;
+}
+.quest-foot {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(140, 110, 60, 0.3);
+  font: 700 11px/1.3 var(--sans);
+  color: var(--ink-soft);
+}
+
+/* six-slot belt: a little smaller */
+.belt.six .slot {
+  width: 58px;
+  height: 58px;
+}
+.belt.six .slot img {
+  width: 50px;
+  height: 50px;
+}
+.slot.locked {
+  display: none;
+}
+.slot .count {
+  position: absolute;
+  right: 4px;
+  bottom: 3px;
+  font: 800 11px/1 var(--sans);
+  color: var(--ink);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+.seedpick button .cnt {
+  margin-left: 2px;
+  font: 800 11px/1 var(--sans);
+  color: var(--ink-faint);
+}
+
+/* world markers + station tags */
+.marker {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+  transition: opacity 0.25s var(--ease);
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
+}
+.marker .gem {
+  width: 16px;
+  height: 16px;
+  transform: rotate(45deg);
+  border-radius: 3px;
+  background: linear-gradient(135deg, var(--gold-hi), var(--gold) 60%, var(--gold-deep));
+  box-shadow: 0 0 0 2px rgba(255, 250, 230, 0.85), 0 0 12px rgba(246, 210, 122, 0.8);
+  animation: gem-bob 1.6s ease-in-out infinite;
+}
+@keyframes gem-bob {
+  50% {
+    transform: translateY(-4px) rotate(45deg);
+  }
+}
+.marker .lbl {
+  margin-top: 4px;
+  padding: 3px 7px;
+  border-radius: 7px;
+  background: rgba(30, 22, 12, 0.6);
+  color: #fff6dd;
+  font: 800 11px/1 var(--sans);
+  white-space: nowrap;
+}
+.marker.edge .lbl {
+  display: none;
+}
+.tag {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  padding: 5px 9px 5px 6px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: 800 12px/1 var(--sans);
+  color: var(--ink);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.tag img {
+  width: 22px;
+  height: 22px;
+}
+.tag.ready {
+  box-shadow: var(--shadow-soft), 0 0 0 2px var(--leaf), 0 0 14px rgba(120, 200, 90, 0.55);
+}
+
+/* objective + chapter banners */
+.objdone {
+  position: absolute;
+  left: 50%;
+  top: 92px;
+  transform: translate(-50%, -8px);
+  opacity: 0;
+  padding: 8px 16px 8px 10px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 800 14px/1 var(--sans);
+  transition: opacity 0.35s var(--ease), transform 0.45s var(--spring);
+}
+.objdone.on {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.objdone .tick {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--leaf);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font: 900 13px/1 var(--sans);
+}
+
+/* letters */
+.letter {
+  position: relative;
+  padding: 34px 40px 30px;
+  background: var(--grain), linear-gradient(180deg, #fbf4e2, #efe0bd);
+  border-radius: 6px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset;
+}
+.letter h2 {
+  margin: 0 0 4px;
+  font: 700 28px/1.1 var(--serif);
+  color: var(--royal-deep);
+}
+.letter .from {
+  font: 600 italic 13px/1.2 var(--serif);
+  color: var(--ink-soft);
+  margin-bottom: 18px;
+}
+.letter p {
+  margin: 0 0 12px;
+  font: 500 16px/1.6 var(--serif);
+  color: var(--ink);
+}
+.letter .sign {
+  margin-top: 18px;
+  text-align: right;
+  font: 600 italic 17px/1.2 var(--serif);
+  color: var(--royal);
+}
+.seal {
+  position: absolute;
+  right: 28px;
+  top: -18px;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #6c8bd8, var(--royal) 55%, var(--royal-deep));
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.35), inset 0 -3px 6px rgba(0, 0, 0, 0.3);
+  display: grid;
+  place-items: center;
+  color: var(--gold-hi);
+  font: 700 22px/1 var(--serif);
+}
+.letter-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+/* wagon panel */
+.pip-line {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: -4px 0 16px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: rgba(43, 68, 134, 0.08);
+  font: 600 14px/1.4 var(--sans);
+  color: var(--ink);
+}
+.pip-line b {
+  font: 700 13px/1 var(--serif);
+  color: var(--royal);
+  white-space: nowrap;
+}
+.note.story {
+  background: var(--grain), linear-gradient(180deg, #fffaf0, #f0e2c2);
+  box-shadow: 0 10px 22px rgba(60, 40, 10, 0.22), 0 0 0 2px rgba(216, 166, 63, 0.55);
+}
+.note.story::before {
+  background: radial-gradient(circle at 35% 30%, #f6d27a, var(--gold) 55%, var(--gold-deep));
+}
+.note .title {
+  font: 650 17px/1.15 var(--serif);
+  color: var(--ink);
+  margin-bottom: 3px;
+}
+.note.packed {
+  opacity: 0.8;
+}
+.wagon-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 18px;
+  gap: 12px;
+  font: 700 13px/1.3 var(--sans);
+  color: var(--ink-soft);
+}
+
+/* shop */
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  align-items: center;
+}
+.tabs button {
+  all: unset;
+  cursor: pointer;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font: 800 13px/1 var(--sans);
+  color: var(--ink-soft);
+  background: rgba(120, 90, 40, 0.08);
+}
+.tabs button.on {
+  color: #fff;
+  background: linear-gradient(180deg, #5aa043, var(--leaf));
+  box-shadow: 0 2px 0 #2f5a22;
+}
+.shop-coins {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 800 16px/1 var(--sans);
+}
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(52vh, 460px);
+  overflow: auto;
+  padding-right: 4px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.42);
+  box-shadow: inset 0 0 0 1px rgba(160, 130, 80, 0.22);
+}
+.row > img {
+  width: 48px;
+  height: 48px;
+}
+.row .rname {
+  font: 650 16px/1.15 var(--serif);
+}
+.row .rsub {
+  font: 600 12px/1.3 var(--sans);
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+.row .grow {
+  flex: 1;
+}
+.row .have {
+  font: 800 12px/1 var(--sans);
+  color: var(--ink-soft);
+  margin-right: 4px;
+}
+.row .btns {
+  display: flex;
+  gap: 6px;
+}
+.btn.small {
+  padding: 7px 11px;
+  font-size: 12px;
+  border-radius: 10px;
+}
+.row.locked {
+  opacity: 0.5;
+}
+.row .owned {
+  font: 800 12px/1 var(--sans);
+  color: var(--leaf);
+}
+
+/* settings */
+.settings {
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 14px 18px;
+  align-items: center;
+  font: 700 14px/1.2 var(--sans);
+}
+.settings input[type="range"] {
+  width: 100%;
+  accent-color: var(--royal);
+}
+.settings input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--royal);
+  justify-self: start;
+}
+
+/* journal */
+.journal {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 20px;
+}
+.journal h3 {
+  margin: 0 0 10px;
+  font: 650 18px/1.1 var(--serif);
+  color: var(--royal-deep);
+}
+.letter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.letter-list button {
+  all: unset;
+  cursor: pointer;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(160, 130, 80, 0.22);
+  font: 600 14px/1.2 var(--serif);
+}
+.letter-list button small {
+  display: block;
+  font: 600 11px/1.2 var(--sans);
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+.ledger {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+  font: 700 13px/1.2 var(--sans);
+  color: var(--ink-soft);
+}
+.ledger b {
+  color: var(--ink);
+}
+
+/* fades, hints, ending */
+.fade {
+  position: absolute;
+  inset: 0;
+  background: #0b0906;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 1.1s var(--ease);
+  display: grid;
+  place-items: center;
+  color: #f6e8c8;
+  font: 600 italic 22px/1.3 var(--serif);
+}
+.fade.on {
+  opacity: 1;
+  pointer-events: auto;
+}
+.lookhint {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 70px);
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: rgba(30, 22, 12, 0.6);
+  color: #fff6dd;
+  font: 700 13px/1 var(--sans);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.lookhint.on {
+  opacity: 1;
+}
+.ending {
+  text-align: center;
+}
+.ending .ribbon {
+  margin: 6px 0 16px;
+}
+.ending p {
+  font: 500 16px/1.6 var(--serif);
+  max-width: 560px;
+  margin: 0 auto 12px;
+}
+.credits {
+  margin: 18px auto 6px;
+  font: 700 12px/1.6 var(--sans);
+  color: var(--ink-soft);
+}
+@media (max-width: 900px) {
+  .journal {
+    grid-template-columns: 1fr;
+  }
+}

@@ -31,7 +31,18 @@ import {
 } from './layout';
 import { LAYER_REFLECT, LAYER_REFRACT } from './water';
 
+export interface AppleTree {
+  key: string;
+  x: number;
+  z: number;
+  meshes: InstancedMesh[];
+  index: number;
+  base: Matrix4;
+}
+
 export interface World {
+  /** Apple trees you can shake (instanced, so they are moved by matrix). */
+  appleTrees: AppleTree[];
   colliders: Colliders;
   smoke: Vector3;
   update(dt: number, px: number, pz: number, glow: number): void;
@@ -134,9 +145,10 @@ export function buildWorld(scene: Scene, assets: Assets, lib: MaterialLib, maskA
   };
 
   /** One InstancedMesh per primitive of `name`, placed with the given matrices. */
-  const scatter = (name: string, mats: Matrix4[], wind: WindProfile = 'none', o: { cast?: boolean; reflect?: boolean; refract?: boolean } = {}): void => {
+  const scatter = (name: string, mats: Matrix4[], wind: WindProfile = 'none', o: { cast?: boolean; reflect?: boolean; refract?: boolean } = {}): InstancedMesh[] => {
+    const out: InstancedMesh[] = [];
     const src = assets.node(name);
-    if (!src || mats.length === 0) return;
+    if (!src || mats.length === 0) return out;
     src.traverse((c) => {
       const m = c as Mesh;
       if (!m.isMesh) return;
@@ -153,7 +165,9 @@ export function buildWorld(scene: Scene, assets: Assets, lib: MaterialLib, maskA
       if (o.reflect) im.layers.enable(LAYER_REFLECT);
       if (o.refract) im.layers.enable(LAYER_REFRACT);
       root.add(im);
+      out.push(im);
     });
+    return out;
   };
   const mat4 = (x: number, y: number, z: number, rot: number, sx: number, sy = sx, sz = sx): Matrix4 => {
     _q.setFromAxisAngle(_y, rot);
@@ -350,6 +364,7 @@ export function buildWorld(scene: Scene, assets: Assets, lib: MaterialLib, maskA
   }
 
   // ------------------------------------------------------------------ trees
+  const appleTrees: AppleTree[] = [];
   const treeSpots: [string, number, number, number, number][] = [
     ['tree_apple_a', -15.2, 2.6, 0.3, 1.0],
     ['tree_apple_b', -11.6, 9.4, 2.0, 1.05],
@@ -372,7 +387,16 @@ export function buildWorld(scene: Scene, assets: Assets, lib: MaterialLib, maskA
       list.push(mat4(x, terrainHeight(x, z), z, r, s));
       colliders.circles.push({ x, z, r: n === 'tree_oak' ? 0.55 : 0.34 });
     }
-    for (const [n, list] of byKind) scatter(n, list, 'tree', { reflect: true });
+    for (const [n, list] of byKind) {
+      const meshes = scatter(n, list, 'tree', { reflect: true });
+      if (!n.startsWith('tree_apple')) continue;
+      let i = 0;
+      for (const [tn, x, z] of treeSpots) {
+        if (tn !== n) continue;
+        appleTrees.push({ key: `apple${appleTrees.length}`, x, z, meshes, index: i, base: list[i]!.clone() });
+        i++;
+      }
+    }
   }
   // far treeline, clustered into copses along the hills
   {
@@ -485,6 +509,7 @@ export function buildWorld(scene: Scene, assets: Assets, lib: MaterialLib, maskA
     smoke,
     flowers,
     deckAt,
+    appleTrees,
     update(dt, px, pz, glow) {
       if (gate) {
         const near = Math.hypot(px - GATE.x, pz - GATE.z) < 3.4 ? 1 : 0;

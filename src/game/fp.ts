@@ -26,7 +26,21 @@ export class FirstPerson {
   /** Accumulated mouse motion this frame, for view-model sway. */
   readonly look = { x: 0, y: 0 };
   sensitivity = 0.0022;
+  invertY = false;
   onStep: ((x: number, y: number, z: number) => void) | null = null;
+  onLand: (() => void) | null = null;
+  /** Height above the ground while jumping, and its velocity. */
+  private air = 0;
+  private airV = 0;
+  get grounded(): boolean {
+    return this.air <= 0.0001;
+  }
+  jump(): boolean {
+    if (!this.grounded) return false;
+    this.airV = 4.2;
+    this.air = 0.001;
+    return true;
+  }
   private stepAcc = 0;
   private groundY = 0;
   private bobY = 0;
@@ -40,7 +54,7 @@ export class FirstPerson {
   /** Feed raw mouse deltas (pointer lock). */
   mouse(dx: number, dy: number): void {
     this.yaw -= dx * this.sensitivity;
-    this.pitch = clamp(this.pitch - dy * this.sensitivity, -1.45, 1.35);
+    this.pitch = clamp(this.pitch - dy * this.sensitivity * (this.invertY ? -1 : 1), -1.45, 1.35);
     this.look.x += dx;
     this.look.y += dy;
   }
@@ -133,7 +147,16 @@ export class FirstPerson {
     const deck = deckAt(this.pos.x, this.pos.z);
     if (deck !== null) gy = Math.max(gy, deck);
     this.groundY = damp(this.groundY, gy, 14, dt);
-    this.pos.y = this.groundY;
+    if (this.air > 0) {
+      this.airV -= 12 * dt;
+      this.air += this.airV * dt;
+      if (this.air <= 0) {
+        this.air = 0;
+        this.airV = 0;
+        this.onLand?.();
+      }
+    }
+    this.pos.y = this.groundY + this.air;
 
     // head bob: a soft figure-eight that fades in with speed
     const k = clamp(this.speed / WALK, 0, 1.6);
@@ -144,7 +167,7 @@ export class FirstPerson {
     const strafe = (-s * this.vel.z + c * this.vel.x) / RUN; // signed sideways speed
     this.roll = damp(this.roll, -strafe * 0.028 + Math.cos(this.phase) * 0.004 * amp, 8, dt);
 
-    this.stepAcc += moved;
+    if (this.air <= 0) this.stepAcc += moved;
     const stride = input.run ? 1.15 : 0.85;
     if (this.stepAcc > stride) {
       this.stepAcc = 0;

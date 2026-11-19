@@ -199,6 +199,9 @@ export class Environment {
   night = 0;
   /** Scales cloud shadow strength (0 at night). */
   daylight = 1;
+  /** 0 = clear, 1 = steady rain (eases toward rainTarget). */
+  rain = 0;
+  rainTarget = 0;
   private readonly cloudOff = new Vector2(0, 0);
 
   constructor(
@@ -272,6 +275,23 @@ export class Environment {
     p.stars = lerp(a.stars, b.stars, t);
     p.glow = lerp(a.glow, b.glow, t);
     p.cloud = lerp(a.cloud, b.cloud, t);
+    // overcast: greyer sky and light, more haze, full cloud cover
+    const r = this.rain;
+    if (r > 0.001) {
+      const grey = (c: Color, k: number, tint: [number, number, number]): void => {
+        const l = c.r * 0.3 + c.g * 0.55 + c.b * 0.15;
+        c.setRGB(lerp(c.r, l * tint[0], k), lerp(c.g, l * tint[1], k), lerp(c.b, l * tint[2], k));
+      };
+      grey(p.zen, r * 0.8, [0.78, 0.84, 0.95]);
+      grey(p.hor, r * 0.75, [0.85, 0.9, 0.98]);
+      grey(p.fog, r * 0.7, [0.85, 0.9, 0.98]);
+      p.zen.multiplyScalar(1 - r * 0.25);
+      p.sunI *= 1 - r * 0.72;
+      p.fogD += r * 0.011;
+      p.cloud = lerp(p.cloud, 1, r);
+      p.env *= 1 - r * 0.2;
+      p.exposure *= 1 + r * 0.18;
+    }
 
     // sun arc: rises in the east (+X), swings through the north (-Z), sets in the west (-X)
     const th = ((h - SUNRISE) / (SUNSET - SUNRISE)) * Math.PI;
@@ -295,7 +315,7 @@ export class Environment {
     const u = this.mat.uniforms;
     (u.uSunCol!.value as Color).copy(p.sun).multiplyScalar(sunUp);
     u.uStars!.value = p.stars;
-    u.uCloudAmt!.value = 0.35 + 0.65 * p.cloud;
+    u.uCloudAmt!.value = 0.35 + 0.65 * p.cloud + this.rain * 0.55;
     u.uNight!.value = this.night;
     const g = u.uGround!.value as Color;
     const bounce = Math.max(this.sunDir.y, 0) * p.sunI * 0.085 * sunUp;
@@ -333,7 +353,8 @@ export class Environment {
         this.day++;
       }
     }
-    this.cloudOff.x += dt * 0.006 * shared.uWind.value.x;
+    this.rain += (this.rainTarget - this.rain) * Math.min(1, dt * 0.25);
+    this.cloudOff.x += dt * 0.006 * shared.uWind.value.x * (1 + this.rain);
     this.cloudOff.y += dt * 0.006 * shared.uWind.value.y;
     this.sample();
     this.dome.position.copy(camera.position);

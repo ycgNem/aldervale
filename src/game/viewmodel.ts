@@ -1,11 +1,11 @@
-import { Group, Matrix4, Mesh, Quaternion, Vector3, type Object3D, type PerspectiveCamera } from 'three';
+import { Color, Group, Matrix4, Mesh, MeshStandardMaterial, Quaternion, Vector3, type Material, type Object3D, type PerspectiveCamera } from 'three';
 import { findByPrefix, type Assets } from '../core/assets';
 import type { MaterialLib } from '../core/materials';
 import { clamp, damp, easeInOut } from '../util/math';
 
-export type ToolId = 'hoe' | 'seeds' | 'water' | 'harvest';
-export const TOOL_IDS: ToolId[] = ['hoe', 'seeds', 'water', 'harvest'];
-const TOOL_ASSET: Record<ToolId, string> = { hoe: 'tool_hoe', seeds: 'tool_seed_bag', water: 'tool_watering_can', harvest: 'tool_basket' };
+import type { ToolId } from './state';
+export type { ToolId } from './state';
+const TOOL_ASSET: Record<ToolId, string> = { hoe: 'tool_hoe', seeds: 'tool_seed_bag', water: 'tool_watering_can', harvest: 'tool_basket', axe: 'tool_axe', pick: 'tool_pick' };
 
 /** Duration of each tool's use animation and the moment (0..1) it takes effect. */
 export const ACTION: Record<ToolId, { time: number; hit: number }> = {
@@ -13,6 +13,8 @@ export const ACTION: Record<ToolId, { time: number; hit: number }> = {
   seeds: { time: 0.5, hit: 0.48 },
   water: { time: 0.95, hit: 0.3 },
   harvest: { time: 0.48, hit: 0.5 },
+  axe: { time: 0.58, hit: 0.5 },
+  pick: { time: 0.64, hit: 0.52 },
 };
 
 /**
@@ -113,6 +115,38 @@ const RIGS: Record<ToolId, ToolRig> = {
       { t: 0.62, p: [-0.08, -0.36, -0.72], up: [0.1, -0.7, -0.3], fwd: [0.15, -0.3, -1] },
       { t: 1.0, p: [-0.23, -0.34, -0.48], up: [0.25, 1, 0.15], fwd: [0.35, 0.05, -1] },
     ],
+  },
+  axe: {
+    rest: { p: [0.3, -0.36, -0.46], up: [-0.1, 0.88, -0.46], fwd: [-0.05, -0.47, -0.88] },
+    keys: [
+      { t: 0.0, p: [0.3, -0.36, -0.46], up: [-0.1, 0.88, -0.46], fwd: [-0.05, -0.47, -0.88] },
+      { t: 0.34, p: [0.26, -0.12, -0.3], up: [-0.12, 0.95, 0.28], fwd: [-0.02, -0.28, -0.96] },
+      { t: 0.5, p: [0.16, -0.4, -0.74], up: [-0.1, 0.18, -0.98], fwd: [0.0, -0.98, -0.18] },
+      { t: 0.62, p: [0.16, -0.42, -0.72], up: [-0.1, 0.2, -0.97], fwd: [0.0, -0.97, -0.2] },
+      { t: 1.0, p: [0.3, -0.36, -0.46], up: [-0.1, 0.88, -0.46], fwd: [-0.05, -0.47, -0.88] },
+    ],
+    gripAxis: new Vector3(0, 1, 0),
+    gripAt: new Vector3(0, 0, 0),
+    roll: 0,
+    fore: [0.25, -0.9, 0.4],
+    left: null,
+    leftKeys: null,
+  },
+  pick: {
+    rest: { p: [0.3, -0.37, -0.47], up: [-0.14, 0.84, -0.52], fwd: [0.02, -0.52, -0.85] },
+    keys: [
+      { t: 0.0, p: [0.3, -0.37, -0.47], up: [-0.14, 0.84, -0.52], fwd: [0.02, -0.52, -0.85] },
+      { t: 0.36, p: [0.24, -0.1, -0.3], up: [-0.15, 0.95, 0.25], fwd: [0.0, -0.25, -0.97] },
+      { t: 0.52, p: [0.16, -0.44, -0.76], up: [-0.12, 0.2, -0.97], fwd: [0.02, -0.97, -0.2] },
+      { t: 0.64, p: [0.17, -0.45, -0.74], up: [-0.12, 0.24, -0.96], fwd: [0.02, -0.96, -0.24] },
+      { t: 1.0, p: [0.3, -0.37, -0.47], up: [-0.14, 0.84, -0.52], fwd: [0.02, -0.52, -0.85] },
+    ],
+    gripAxis: new Vector3(0, 1, 0),
+    gripAt: new Vector3(0, 0, 0),
+    roll: 0,
+    fore: [0.25, -0.9, 0.4],
+    left: null,
+    leftKeys: null,
   },
 };
 
@@ -272,7 +306,7 @@ export class ViewModel {
   setTool(id: ToolId): void {
     if (id === this.tool) return;
     this.tool = id;
-    if (!this.action) this.lowerTarget = 1;
+    if (!this.action && id !== this.shown) this.lowerTarget = 1;
   }
 
   setLowered(v: boolean): void {
@@ -285,11 +319,12 @@ export class ViewModel {
 
   /** Play the use animation; `onHit` fires at the impact frame. */
   use(tool: ToolId, onHit: () => void): boolean {
-    if (this.action || this.lower > 0.3) return false;
-    if (tool !== this.shown) {
-      this.tool = tool;
-      this.show(tool);
-    }
+    if (this.action || this.forcedLow) return false;
+    if (tool !== this.shown) this.show(tool);
+    this.tool = tool;
+    // snap the tool up: an action always plays with the tool in hand
+    this.lowerTarget = 0;
+    this.lower = Math.min(this.lower, 0.15);
     this.action = { tool, t: 0, fired: false, onHit };
     return true;
   }
@@ -308,7 +343,8 @@ export class ViewModel {
     if (!this.action) {
       if (this.shown !== this.tool && this.lower > 0.97) this.show(this.tool);
       if (this.shown !== this.tool) this.lowerTarget = 1;
-      else if (this.lowerTarget === 1 && this.lower > 0.97 && !this.forcedLow) this.lowerTarget = 0;
+      else if (this.lowerTarget === 1 && this.lower > 0.97 && !this.forcedLow && !this.blocked) this.lowerTarget = 0;
+      if (!this.forcedLow && this.shown === this.tool) this.lowerTarget = this.blocked ? 0.75 : 0;
     }
     this.lower = damp(this.lower, this.lowerTarget, this.lowerTarget > this.lower ? 16 : 9, dt);
 
@@ -352,10 +388,38 @@ export class ViewModel {
     this.sway.rotation.set(this.swayY * 2.2 - low * 0.5 + (running ? -0.08 : 0), this.swayX * 2.5, -this.swayX * 1.6 + bx * 1.5);
   }
 
+  /** Something solid right in front of the camera: tuck the tool away. */
+  blocked = false;
   /** Keep the tools down while a menu is open. */
   forcedLow = false;
+
+  /** Paint the watering can copper (after the upgrade). */
+  setCopperCan(on: boolean): void {
+    const can = this.tools.get('water');
+    if (!can || this.copper === on) return;
+    this.copper = on;
+    can.traverse((o) => {
+      const m = o as Mesh;
+      if (!m.isMesh || this.hands.get('water') && isChildOf(m, this.hands.get('water')!)) return;
+      const mat = m.material as Material;
+      if (mat.name !== 'metal') return;
+      if (on) {
+        const c = (mat as MeshStandardMaterial).clone();
+        c.color = new Color(1.05, 0.62, 0.42);
+        c.name = 'metal_copper';
+        m.userData.orig = mat;
+        m.material = c;
+      } else if (m.userData.orig) m.material = m.userData.orig as Material;
+    });
+  }
+  private copper = false;
   setForcedLow(v: boolean): void {
     this.forcedLow = v;
     this.lowerTarget = v ? 1 : 0;
   }
+}
+
+function isChildOf(o: Object3D, parent: Object3D): boolean {
+  for (let p: Object3D | null = o; p; p = p.parent) if (p === parent) return true;
+  return false;
 }

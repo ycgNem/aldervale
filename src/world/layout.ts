@@ -46,6 +46,22 @@ export const ROYAL = {
   milestone: { x: -25.2, z: 16.9, rot: -2.64 },
 };
 
+/** Wren's market cart by the crossroads, and the compost bay north of the field. */
+export const STALL = { x: -8.4, z: 12.4, rot: -2.73 };
+export const COMPOST = { x: 1.4, z: -4.5, rot: 0 };
+
+/** The road the royal wagon takes to the castle (from its parking spot outward). */
+export const WAGON_ROUTE: [number, number][] = [
+  [-18.6, 13.6],
+  [-23.5, 16.0],
+  [-32, 17.8],
+  [-46, 22.6],
+  [-60, 30.5],
+  [-78, 40.5],
+  [-98, 51.5],
+  [-118, 62.5],
+];
+
 /** The castle on the far hill, at the end of the road. */
 export const CASTLE = { x: -236, z: 132, rot: 0.95, hillR: 70, top: 44, scale: 1.4 };
 
@@ -254,6 +270,9 @@ export function groundMask(x: number, z: number, out: GroundMask): GroundMask {
     const s = SITES[k as keyof typeof SITES];
     dirt = Math.max(dirt, (1 - smoothstep(-0.6, 0.4, rectSdf(x, z, s.x, s.z, s.half - 0.4, s.half - 0.4, s.rot) + n * 0.8)) * 0.9);
   }
+  // trodden ground at Wren's stall and the compost bay
+  dirt = Math.max(dirt, (1 - smoothstep(0.8, 2.8, Math.hypot(x - STALL.x, z - STALL.z) + n * 0.9)) * 0.8);
+  dirt = Math.max(dirt, (1 - smoothstep(0.5, 1.8, Math.hypot(x - COMPOST.x, z - COMPOST.z - 0.6) + n * 0.8)) * 0.85);
   // trodden ground by the requisition board
   dirt = Math.max(dirt, (1 - smoothstep(0.6, 2.2, Math.hypot(x - ROYAL.board.x - 0.9, z - ROYAL.board.z - 1.1) + n * 0.9)) * 0.85);
   // around the cottage walls
